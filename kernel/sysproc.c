@@ -10,6 +10,7 @@
 #include "include/kalloc.h"
 #include "include/string.h"
 #include "include/printf.h"
+#include "include/sbi.h"
 
 extern int exec(char *path, char **argv);
 
@@ -152,5 +153,12 @@ sys_trace(void)
     return -1;
   }
   myproc()->tmask = mask;
+  return 0;
+}
+
+uint64
+sys_shutdown(void)
+{
+  sbi_shutdown();
   return 0;
 }

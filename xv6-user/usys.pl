@@ -41,3 +41,6 @@ entry("remove");
 entry("trace");
 entry("sysinfo");
 entry("rename");
+
+# add by miniyuan
+entry("shutdown")

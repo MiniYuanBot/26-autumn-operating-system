@@ -152,11 +152,19 @@ else
 	@$(QEMU) $(QEMUOPTS)
 endif
 
+$K/initcode.h: $U/initcode tools/bin2c.py
+	python3 tools/bin2c.py $U/initcode > $K/include/initcode.h
+
+$K/proc.o: $K/initcode.h
+
 $U/initcode: $U/initcode.S
-	$(CC) $(CFLAGS) -march=rv64g -nostdinc -I. -Ikernel -c $U/initcode.S -o $U/initcode.o
-	$(LD) $(LDFLAGS) -N -e start -Ttext 0 -o $U/initcode.out $U/initcode.o
+	$(CC) $(CFLAGS) -fno-pie -fno-pic \
+	    -march=rv64g -nostdinc -I. -Ikernel \
+	    -c $U/initcode.S -o $U/initcode.o
+	$(LD) $(LDFLAGS) -N -e start -Ttext 0 \
+	    -o $U/initcode.out $U/initcode.o
 	$(OBJCOPY) -S -O binary $U/initcode.out $U/initcode
-	$(OBJDUMP) -S $U/initcode.o > $U/initcode.asm
+	$(OBJDUMP) -S $U/initcode.out > $U/initcode.asm
 
 tags: $(OBJS) _init
 	@etags *.S *.c
@@ -214,6 +222,8 @@ UPROGS=\
 userprogs: $(UPROGS)
 
 dst=/mnt
+TESTROOT=/testing/user
+TESTBIN=$(TESTROOT)/build/riscv64
 
 # @cp $U/_init $(dst)/init
 # @cp $U/_sh $(dst)/sh
@@ -229,6 +239,10 @@ fs: $(UPROGS)
 	@for file in $$( ls $U/_* ); do \
 		cp $$file $(dst)/$${file#$U/_};\
 		cp $$file $(dst)/bin/$${file#$U/_}; done
+	@if [ -d "$(TESTBIN)" ]; then \
+		echo "copying oscomp tests into fs.img..."; \
+		cp -r $(TESTBIN)/. $(dst)/; \
+	fi
 	@umount $(dst)
 
 # Write mounted sdcard
@@ -249,3 +263,18 @@ clean:
 	.gdbinit \
 	$U/usys.S \
 	$(UPROGS)
+
+.PHONY: local test test-build fs
+
+test-build:
+	@echo "building oscomp tests..."
+	@cd $(TESTROOT) && sh build-oscomp.sh
+
+local:
+	@$(MAKE) build platform=qemu
+	@$(MAKE) fs platform=qemu
+	@$(QEMU) $(QEMUOPTS)
+
+test:
+	@$(MAKE) test-build
+	@$(MAKE) local
