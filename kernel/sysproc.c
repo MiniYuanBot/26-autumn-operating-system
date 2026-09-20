@@ -11,6 +11,9 @@
 #include "include/string.h"
 #include "include/printf.h"
 #include "include/sbi.h"
+#include "include/utsname.h"
+#include "include/vm.h"
+
 
 extern int exec(char *path, char **argv);
 
@@ -160,5 +163,29 @@ uint64
 sys_shutdown(void)
 {
   sbi_shutdown();
+  return 0;
+}
+
+uint64
+sys_uname(void)
+{
+  uint64 addr;
+  struct utsname un = {
+    .sysname = "xv6",
+    .nodename = "miniyuan",
+    .release = "1.0",
+    .version = "xv6-k210",
+    .machine = "riscv64",
+    .domainname = "localdomain",
+  };
+
+  if(argaddr(0, &addr) < 0) {
+    return -1;
+  }
+
+  if(copyout2(addr, (char *)&un, sizeof(un)) < 0) {
+    return -1;
+  }
+
   return 0;
 }

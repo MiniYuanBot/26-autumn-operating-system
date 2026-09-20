@@ -45,7 +45,7 @@ main(void)
 
     // running tests
     for(int i = 0; i < cnt; i++){
-      printf("init: running %s\n", cmds[i]);
+      // printf("init: running %s\n", cmds[i]);
       pid = fork();
       if(pid < 0){
         printf("init: fork faild\n");
@@ -77,7 +77,7 @@ main(void)
         }
       }
       
-      printf("init: %s finished\n", cmds[i]);
+      // printf("init: %s finished\n", cmds[i]);
     }
 
     shutdown();

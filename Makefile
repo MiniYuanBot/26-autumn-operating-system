@@ -74,7 +74,7 @@ OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 
 CFLAGS = -Wall -Werror -O -fno-omit-frame-pointer -ggdb -g
-CFLAGS += -MD
+CFLAGS += -MMD -MP
 CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
@@ -152,15 +152,17 @@ else
 	@$(QEMU) $(QEMUOPTS)
 endif
 
-$K/initcode.h: $U/initcode tools/bin2c.py
+$K/include/initcode.h: $U/initcode tools/bin2c.py
 	python3 tools/bin2c.py $U/initcode > $K/include/initcode.h
 
-$K/proc.o: $K/initcode.h
+$K/proc.o: $K/include/initcode.h
 
-$U/initcode: $U/initcode.S
+$U/initcode.o: $U/initcode.S
 	$(CC) $(CFLAGS) -fno-pie -fno-pic \
 	    -march=rv64g -nostdinc -I. -Ikernel \
 	    -c $U/initcode.S -o $U/initcode.o
+
+$U/initcode: $U/initcode.o
 	$(LD) $(LDFLAGS) -N -e start -Ttext 0 \
 	    -o $U/initcode.out $U/initcode.o
 	$(OBJCOPY) -S -O binary $U/initcode.out $U/initcode
@@ -259,10 +261,13 @@ clean:
 	*/*.o */*.d */*.asm */*.sym \
 	$T/* \
 	$U/initcode $U/initcode.out \
+	$K/include/initcode.h \
 	$K/kernel \
 	.gdbinit \
 	$U/usys.S \
 	$(UPROGS)
+
+-include $(wildcard $K/*.d $U/*.d)
 
 .PHONY: local test test-build fs
 

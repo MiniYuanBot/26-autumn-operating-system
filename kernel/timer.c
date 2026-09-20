@@ -9,6 +9,8 @@
 #include "include/timer.h"
 #include "include/printf.h"
 #include "include/proc.h"
+#include "include/syscall.h"
+#include "include/vm.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -31,10 +33,31 @@ set_next_timeout() {
     sbi_set_timer(r_time() + INTERVAL);
 }
 
-void timer_tick() {
+void
+timer_tick() {
     acquire(&tickslock);
     ticks++;
     wakeup(&ticks);
     release(&tickslock);
     set_next_timeout();
+}
+
+uint64
+sys_times(void) {
+    uint64 addr;
+    struct tms t;
+    uint64 ret;
+
+    if (argaddr(0, &addr) < 0)
+        return -1;
+
+    acquire(&tickslock);
+    t.tms_utime = t.tms_stime = t.tms_cutime = t.tms_cstime = ticks;
+    ret = ticks;
+    release(&tickslock);
+
+    if (copyout2(addr, (char *)&t, sizeof(t)) < 0)
+        return -1;
+
+    return ret;
 }
