@@ -99,7 +99,7 @@ linker = ./linker/qemu.ld
 endif
 
 # Compile Kernel
-$T/kernel: $(OBJS) $(linker) $U/initcode
+$T/kernel: $(OBJS) $(linker)
 	@if [ ! -d "./target" ]; then mkdir target; fi
 	@$(LD) $(LDFLAGS) -T $(linker) -o $T/kernel $(OBJS)
 	@$(OBJDUMP) -S $T/kernel > $T/kernel.asm
@@ -140,6 +140,8 @@ QEMUOPTS += -bios $(RUSTSBI)
 QEMUOPTS += -drive file=fs.img,if=none,format=raw,id=x0 
 QEMUOPTS += -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
 
+ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+
 run: build
 ifeq ($(platform), k210)
 	@$(OBJCOPY) $T/kernel --strip-all -O binary $(image)
@@ -152,26 +154,24 @@ else
 	@$(QEMU) $(QEMUOPTS)
 endif
 
-$K/include/initcode.h: $U/initcode tools/bin2c.py
-	python3 tools/bin2c.py $U/initcode > $K/include/initcode.h
+# Build init.c directly as the first user program.
+$U/initcode.out: $U/init.o $(ULIB)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 \
+		-o $U/initcode.out $U/init.o $(ULIB)
+	$(OBJDUMP) -S $U/initcode.out > $U/initcode.asm
+	$(OBJDUMP) -t $U/initcode.out | \
+		sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $U/initcode.sym
+
+$U/init.bin: $U/initcode.out
+	$(OBJCOPY) -S -O binary $U/initcode.out $U/init.bin
+
+$K/include/initcode.h: $U/init.bin tools/bin2c.py
+	python3 tools/bin2c.py $U/init.bin > $K/include/initcode.h
 
 $K/proc.o: $K/include/initcode.h
 
-$U/initcode.o: $U/initcode.S
-	$(CC) $(CFLAGS) -fno-pie -fno-pic \
-	    -march=rv64g -nostdinc -I. -Ikernel \
-	    -c $U/initcode.S -o $U/initcode.o
-
-$U/initcode: $U/initcode.o
-	$(LD) $(LDFLAGS) -N -e start -Ttext 0 \
-	    -o $U/initcode.out $U/initcode.o
-	$(OBJCOPY) -S -O binary $U/initcode.out $U/initcode
-	$(OBJDUMP) -S $U/initcode.out > $U/initcode.asm
-
-tags: $(OBJS) _init
+tags: $(OBJS)
 	@etags *.S *.c
-
-ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $@ $^
@@ -197,7 +197,6 @@ $U/_forktest: $U/forktest.o $(ULIB)
 .PRECIOUS: %.o
 
 UPROGS=\
-	$U/_init\
 	$U/_sh\
 	$U/_cat\
 	$U/_echo\
@@ -239,8 +238,9 @@ fs: $(UPROGS)
 	@if [ ! -d "$(dst)/bin" ]; then mkdir $(dst)/bin; fi
 	@cp README $(dst)/README
 	@for file in $$( ls $U/_* ); do \
-		cp $$file $(dst)/$${file#$U/_};\
-		cp $$file $(dst)/bin/$${file#$U/_}; done
+		cp $$file $(dst)/$${file#$U/_}; \
+		cp $$file $(dst)/bin/$${file#$U/_}; \
+	done
 	@if [ -d "$(TESTBIN)" ]; then \
 		echo "copying oscomp tests into fs.img..."; \
 		cp -r $(TESTBIN)/. $(dst)/; \
@@ -252,24 +252,26 @@ sdcard: userprogs
 	@if [ ! -d "$(dst)/bin" ]; then mkdir $(dst)/bin; fi
 	@for file in $$( ls $U/_* ); do \
 		cp $$file $(dst)/bin/$${file#$U/_}; done
-	@cp $U/_init $(dst)/init
 	@cp $U/_sh $(dst)/sh
 	@cp README $(dst)/README
 
-clean: 
+clean:
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
 	*/*.o */*.d */*.asm */*.sym \
 	$T/* \
-	$U/initcode $U/initcode.out \
+	$U/init.bin \
+	$U/initcode.out \
 	$K/include/initcode.h \
 	$K/kernel \
+	kernel-qemu \
+	sbi-qemu \
 	.gdbinit \
 	$U/usys.S \
 	$(UPROGS)
 
 -include $(wildcard $K/*.d $U/*.d)
 
-.PHONY: local test test-build fs
+.PHONY: all build run local test test-build fs sdcard clean
 
 test-build:
 	@echo "building oscomp tests..."
@@ -283,3 +285,7 @@ local:
 test:
 	@$(MAKE) test-build
 	@$(MAKE) local
+
+all: build
+	@cp $(T)/kernel ./kernel-qemu
+	@cp ./bootloader/SBI/sbi-qemu ./sbi-qemu
