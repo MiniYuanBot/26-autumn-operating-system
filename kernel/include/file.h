@@ -6,6 +6,7 @@ struct file {
   int ref; // reference count
   char readable;
   char writable;
+  char append;
   struct pipe *pipe; // FD_PIPE
   struct dirent *ep;
   uint off;          // FD_ENTRY

@@ -8,11 +8,11 @@
 
 // char *argv[] = { "sh", 0 };
 char *cmds[] = {
-  "getcwd",
-  "write",
-  "getpid",
-  "times",
-  "uname",
+  "mmap",
+  "open",
+  "openat",
+  "brk",
+  "munmap",
 };
 static int cnt = sizeof(cmds) / sizeof(cmds[0]);
 

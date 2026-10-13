@@ -63,7 +63,15 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct dirent *cwd;          // Current directory
   char name[16];               // Process name (debugging)
-  int tmask;                    // trace mask
+  int tmask;                   // trace mask
+
+  // add by miniyuan
+  // File-backed memory mapping (eager allocation only).
+  uint64 mmap_addr;            // Start virtual address of the mapping 
+  uint64 mmap_length;          // Mapping length (bytes)
+  uint64 mmap_offset;          // Mapping offset (bytes)
+  int mmap_flags;              // Mapping file flags
+  struct file *mmap_file;      // File backing the mapping
 };
 
 void            reg_info(void);

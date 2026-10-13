@@ -122,30 +122,45 @@ sys_fstat(void)
 }
 
 static struct dirent*
-create(char *path, short type, int mode)
+createat(struct dirent* base, char *path, short type, int exclusive)
 {
   struct dirent *ep, *dp;
   char name[FAT32_MAX_FILENAME + 1];
+  int attr;
 
-  if((dp = enameparent(path, name)) == NULL)
-    return NULL;
-
-  if (type == T_DIR) {
-    mode = ATTR_DIRECTORY;
-  } else if (mode & O_RDONLY) {
-    mode = ATTR_READ_ONLY;
+  if(type == T_DIR) {
+    attr = ATTR_DIRECTORY;
+  } else if(type == T_FILE) {
+    attr = 0;
   } else {
-    mode = 0;  
+    return NULL; 
   }
 
+  if((dp = enameparentat(base, path, name)) == NULL)
+    return NULL;
+
   elock(dp);
-  if ((ep = ealloc(dp, name, mode)) == NULL) {
+
+  // O_CREATE | O_EXCL reject an existing entry.
+  if(exclusive) {
+    ep = dirlookup(dp, name, 0);
+    if(ep != NULL) {
+      eunlock(dp);
+      eput(ep);
+      eput(dp);
+      return NULL;
+    }
+  }
+
+  // Allocate or retrieve the directory entry.
+  if((ep = ealloc(dp, name, attr)) == NULL) {
     eunlock(dp);
     eput(dp);
     return NULL;
   }
   
-  if ((type == T_DIR && !(ep->attribute & ATTR_DIRECTORY)) ||
+  // Check that the entry type matches.
+  if((type == T_DIR && !(ep->attribute & ATTR_DIRECTORY)) ||
       (type == T_FILE && (ep->attribute & ATTR_DIRECTORY))) {
     eunlock(dp);
     eput(ep);
@@ -156,60 +171,137 @@ create(char *path, short type, int mode)
   eunlock(dp);
   eput(dp);
 
-  elock(ep);
   return ep;
+}
+
+static struct dirent*
+create(char *path, short type, int exclusive)
+{
+  return createat(myproc()->cwd, path, type, exclusive);
+}
+
+static int
+do_open(struct dirent *base, char *path, int flags)
+{
+  // Check the flags
+  const int supported = O_ACCMODE | O_CREATE | O_EXCL | 
+                        O_TRUNC | O_APPEND | O_DIRECTORY;
+  
+  if(flags & ~supported)
+    return -1;
+
+  int access = flags & O_ACCMODE;
+
+  if((flags & O_TRUNC) && access == O_RDONLY)
+    return -1;
+
+  if((flags & O_CREATE) && (flags & O_DIRECTORY))
+    return -1;
+
+  struct dirent *ep;
+
+  if(flags & O_CREATE) {
+    ep = createat(base, path, T_FILE, !!(flags & O_EXCL));
+  } else {
+    ep = enameat(base, path);
+  }
+
+  if(ep == NULL)
+    return -1;
+
+  elock(ep);
+
+  int isdir = !!(ep->attribute & ATTR_DIRECTORY);
+
+  if(
+    (isdir && access != O_RDONLY) ||
+    (isdir && (flags & O_TRUNC)) ||
+    ((flags & O_DIRECTORY) && !isdir) ||
+    ((ep->attribute & ATTR_READ_ONLY) && access != O_RDONLY)
+  ) {
+    eunlock(ep);
+    eput(ep);
+    return -1;
+  }
+
+  struct file *f = filealloc();
+  if(f == NULL) {
+    eunlock(ep);
+    eput(ep);
+    return -1;
+  }
+
+  f->type = FD_ENTRY;
+  f->ep = ep;
+  f->off = (flags & O_APPEND) ? ep->file_size : 0;
+  f->readable = (access != O_WRONLY);
+  f->writable = (access != O_RDONLY);
+  f->append = !!(flags & O_APPEND);
+
+  int fd = fdalloc(f);
+  eunlock(ep);
+
+  if(fd < 0) {
+    fileclose(f);
+    eput(ep);
+    return -1;
+  }
+
+  if(flags & O_TRUNC)
+    etrunc(ep);
+
+  return fd;
 }
 
 uint64
 sys_open(void)
 {
   char path[FAT32_MAX_PATH];
-  int fd, omode;
-  struct file *f;
-  struct dirent *ep;
+  int flags;
 
-  if(argstr(0, path, FAT32_MAX_PATH) < 0 || argint(1, &omode) < 0)
+  if(argstr(0, path, FAT32_MAX_PATH) < 0 || argint(1, &flags) < 0)
     return -1;
 
-  if(omode & O_CREATE){
-    ep = create(path, T_FILE, omode);
-    if(ep == NULL){
-      return -1;
-    }
+  return do_open(myproc()->cwd, path, flags);
+}
+
+uint64
+sys_openat(void)
+{
+  int dirfd, flags;
+  char path[FAT32_MAX_PATH];
+  struct dirent *base;
+  struct proc *p = myproc();
+
+  if(
+    argint(0, &dirfd) < 0 ||
+    argstr(1, path, FAT32_MAX_PATH) < 0 ||
+    argint(2, &flags) < 0
+  )
+    return -1;
+
+  if(path[0] == '\0')
+    return -1;
+
+  if(path[0] == '/' || dirfd == AT_FDCWD) {
+    base = p->cwd;
   } else {
-    if((ep = ename(path)) == NULL){
+    if(dirfd < 0 || dirfd >= NOFILE)
       return -1;
-    }
-    elock(ep);
-    if((ep->attribute & ATTR_DIRECTORY) && omode != O_RDONLY){
-      eunlock(ep);
-      eput(ep);
+
+    struct file *f = p->ofile[dirfd];
+    if(
+      f == NULL ||
+      f->type != FD_ENTRY ||
+      f->ep == NULL ||
+      !(f->ep->attribute & ATTR_DIRECTORY)
+    )
       return -1;
-    }
+    
+    base = f->ep;
   }
 
-  if((f = filealloc()) == NULL || (fd = fdalloc(f)) < 0){
-    if (f) {
-      fileclose(f);
-    }
-    eunlock(ep);
-    eput(ep);
-    return -1;
-  }
-
-  if(!(ep->attribute & ATTR_DIRECTORY) && (omode & O_TRUNC)){
-    etrunc(ep);
-  }
-
-  f->type = FD_ENTRY;
-  f->off = (omode & O_APPEND) ? ep->file_size : 0;
-  f->ep = ep;
-  f->readable = !(omode & O_WRONLY);
-  f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
-
-  eunlock(ep);
-
-  return fd;
+  return do_open(base, path, flags);
 }
 
 uint64
@@ -221,7 +313,6 @@ sys_mkdir(void)
   if(argstr(0, path, FAT32_MAX_PATH) < 0 || (ep = create(path, T_DIR, 0)) == 0){
     return -1;
   }
-  eunlock(ep);
   eput(ep);
   return 0;
 }

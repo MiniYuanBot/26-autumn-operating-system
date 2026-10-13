@@ -863,6 +863,9 @@ struct dirent *dirlookup(struct dirent *dp, char *filename, uint *poff)
     return NULL;
 }
 
+// Extract the next path component into name, skipping leading slashes.
+// Return a pointer to the remaining path, or NULL if no component remains.
+// Note that after extracting the last component, the returned pointer points to '\0'.
 static char *skipelem(char *path, char *name)
 {
     while (*path == '/') {
@@ -886,13 +889,14 @@ static char *skipelem(char *path, char *name)
 }
 
 // FAT32 version of namex in xv6's original file system.
-static struct dirent *lookup_path(char *path, int parent, char *name)
+static struct dirent *lookup_path(struct dirent *base, 
+    char *path, int parent, char *name)
 {
     struct dirent *entry, *next;
     if (*path == '/') {
         entry = edup(&root);
-    } else if (*path != '\0') {
-        entry = edup(myproc()->cwd);
+    } else if (*path != '\0' && base != NULL) {
+        entry = edup(base);
     } else {
         return NULL;
     }
@@ -925,11 +929,21 @@ static struct dirent *lookup_path(char *path, int parent, char *name)
 
 struct dirent *ename(char *path)
 {
+    return enameat(myproc()->cwd, path);
+}
+
+struct dirent *enameat(struct dirent *base, char *path)
+{
     char name[FAT32_MAX_FILENAME + 1];
-    return lookup_path(path, 0, name);
+    return lookup_path(base, path, 0, name);
 }
 
 struct dirent *enameparent(char *path, char *name)
 {
-    return lookup_path(path, 1, name);
+    return enameparentat(myproc()->cwd, path, name);
+}
+
+struct dirent *enameparentat(struct dirent *base, char *path, char *name)
+{
+    return lookup_path(base, path, 1, name);
 }

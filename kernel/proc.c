@@ -165,6 +165,13 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  // Initialize file-backed memory mapping metadata.
+  p->mmap_addr   = 0;
+  p->mmap_length = 0;
+  p->mmap_offset = 0;
+  p->mmap_flags  = 0;
+  p->mmap_file   = NULL;
+
   return p;
 }
 

@@ -8,6 +8,7 @@
 #define SYS_getcwd       17
 #define SYS_dup          23
 #define SYS_chdir        49
+#define SYS_openat       56
 #define SYS_close        57
 #define SYS_read         63
 #define SYS_write        64
@@ -18,6 +19,9 @@
 #define SYS_uname        160
 #define SYS_getpid       172
 #define SYS_shutdown     210
+#define SYS_brk          214
+#define SYS_munmap       215
+#define SYS_mmap         222
 
 
 // ============================================================

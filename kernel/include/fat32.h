@@ -65,7 +65,9 @@ void            elock(struct dirent *entry);
 void            eunlock(struct dirent *entry);
 int             enext(struct dirent *dp, struct dirent *ep, uint off, int *count);
 struct dirent*  ename(char *path);
+struct dirent*  enameat(struct dirent *base, char *path);
 struct dirent*  enameparent(char *path, char *name);
+struct dirent*  enameparentat(struct dirent *base, char *path, char *name);
 int             eread(struct dirent *entry, int user_dst, uint64 dst, uint off, uint n);
 int             ewrite(struct dirent *entry, int user_src, uint64 src, uint off, uint n);
 
