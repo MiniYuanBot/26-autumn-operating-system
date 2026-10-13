@@ -192,6 +192,13 @@ do_open(struct dirent *base, char *path, int flags)
 
   int access = flags & O_ACCMODE;
 
+  if(
+    access != O_RDONLY &&
+    access != O_WRONLY &&
+    access != O_RDWR
+  )
+    return -1;
+
   if((flags & O_TRUNC) && access == O_RDONLY)
     return -1;
 
@@ -224,6 +231,7 @@ do_open(struct dirent *base, char *path, int flags)
     return -1;
   }
 
+  // Allocate and initialize the file object.
   struct file *f = filealloc();
   if(f == NULL) {
     eunlock(ep);
@@ -233,23 +241,26 @@ do_open(struct dirent *base, char *path, int flags)
 
   f->type = FD_ENTRY;
   f->ep = ep;
-  f->off = (flags & O_APPEND) ? ep->file_size : 0;
   f->readable = (access != O_WRONLY);
   f->writable = (access != O_RDONLY);
   f->append = !!(flags & O_APPEND);
 
+  // Allocate the file descriptor before modifying the file.
   int fd = fdalloc(f);
-  eunlock(ep);
-
   if(fd < 0) {
+    eunlock(ep);
     fileclose(f);
-    eput(ep);
     return -1;
   }
 
+  // Truncate while holding the directory-entry lock.
   if(flags & O_TRUNC)
     etrunc(ep);
 
+  // Initialize the offset after truncation.
+  f->off = f->append ? ep->file_size : 0;
+
+  eunlock(ep);
   return fd;
 }
 
