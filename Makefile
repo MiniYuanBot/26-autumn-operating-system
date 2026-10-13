@@ -154,6 +154,39 @@ else
 	@$(QEMU) $(QEMUOPTS)
 endif
 
+# All tests in the current suite.
+ALL_TESTS := \
+	shutdown getcwd write getpid times uname \
+	mmap open openat brk munmap
+
+# Default: run all tests.
+TESTS ?= all
+
+ifeq ($(TESTS),all)
+SELECTED_TESTS := $(ALL_TESTS)
+else
+SELECTED_TESTS := $(TESTS)
+endif
+
+.PHONY: FORCE
+
+# Generate the selected test list.
+$U/init-tests.h: FORCE
+	@{ \
+	  printf 'static char *cmds[] = {\n'; \
+	  for test in $(SELECTED_TESTS); do \
+	    printf '  "%s",\n' "$$test"; \
+	  done; \
+	  printf '};\n'; \
+	} > $@.tmp
+	@if ! cmp -s $@.tmp $@; then \
+	  mv $@.tmp $@; \
+	else \
+	  rm $@.tmp; \
+	fi
+
+$U/init.o: $U/init-tests.h
+
 # Build init.c directly as the first user program.
 $U/initcode.out: $U/init.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 \

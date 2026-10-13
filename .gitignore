@@ -11,6 +11,7 @@ xv6-user/*.sym
 xv6-user/init.bin
 xv6-user/initcode.out
 xv6-user/usys.S
+xv6-user/init-tests.h
 
 kernel/*.back.c
 kernel/*.example.c
