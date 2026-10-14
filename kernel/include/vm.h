@@ -9,6 +9,8 @@ void            kvminithart(void);
 uint64          kvmpa(uint64);
 void            kvmmap(uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
+int             vmunmap_sparse(pagetable_t pagetable, uint64 start, uint64 end, int do_free);
+int             uvmcopy_range(pagetable_t old, pagetable_t new, pagetable_t knew, uint64 start, uint64 end);
 pagetable_t     uvmcreate(void);
 // void            uvminit(pagetable_t, uchar *, uint);
 void            uvminit(pagetable_t, pagetable_t, uchar *, uint);

@@ -8,6 +8,7 @@
 #include "include/proc.h"
 #include "include/printf.h"
 #include "include/string.h"
+#include "include/mmap.h"
 
 /*
  * the kernel's page table.
@@ -245,6 +246,81 @@ vmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   }
 }
 
+// Unmap resident pages in a sparse virtual address range.
+// Unmapped pages are skipped to support lazy allocation.
+int
+vmunmap_sparse(pagetable_t pagetable, uint64 start, uint64 end, int do_free)
+{
+  if (start > end || end > MAXVA ||
+    start % PGSIZE != 0 || end % PGSIZE != 0)
+    return -1;
+
+  for (uint64 va = start; va < end; va += PGSIZE) {
+    pte_t *pte = walk(pagetable, va, 0);
+
+    // Lazy allocation pages.
+    if (pte == NULL || !(*pte & PTE_V))
+      continue;
+
+    // Validate it's a leaf PTE.
+    if (!(*pte & (PTE_R | PTE_W | PTE_X)))
+      panic("vmunmap_sparse: non-leaf");
+
+    vmunmap(pagetable, va, 1, do_free);
+  }
+
+  return 0;
+}
+
+// Copy resident pages in [start, end) to new user and kernel page tables.
+// Skip unmapped pages to preserve lazy allocation.
+// Destination ranges must be initially unmapped.
+int
+uvmcopy_range(pagetable_t old, pagetable_t new,
+              pagetable_t knew, uint64 start, uint64 end)
+{
+  if (start > end || end > MAXUVA ||
+    start % PGSIZE != 0 || end % PGSIZE != 0)
+    return -1;
+
+  for (uint64 va = start; va < end; va += PGSIZE) {
+    pte_t *pte = walk(old, va, 0);
+
+    // Lazy allocation pages.
+    if (pte == NULL || !(*pte & PTE_V))
+      continue;
+
+    // Validate it's a leaf PTE.
+    if (!(*pte & (PTE_R | PTE_W | PTE_X)))
+      panic("uvmcopy_range: non-leaf");
+
+    char *mem = kalloc();
+    if (mem == NULL)
+      goto bad;
+
+    memmove(mem, (void *)PTE2PA(*pte), PGSIZE);
+
+    int perm = PTE_FLAGS(*pte);
+
+    if (mappages(new, va, PGSIZE, (uint64)mem, perm) < 0) {
+      kfree(mem);
+      goto bad;
+    }
+
+    if (mappages(knew, va, PGSIZE, (uint64)mem, PTE_R | PTE_W) < 0) {
+      goto bad;
+    }
+  }
+
+  return 0;
+
+bad:
+  vmunmap_sparse(knew, start, end, 0);
+  vmunmap_sparse(new, start, end, 1);
+
+  return -1;
+}
+
 // create an empty user page table.
 // returns 0 if out of memory.
 pagetable_t
@@ -313,20 +389,21 @@ uvmalloc(pagetable_t pagetable, pagetable_t kpagetable, uint64 oldsz, uint64 new
   return newsz;
 }
 
-// Deallocate user pages to bring the process size from oldsz to
-// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
-// need to be less than oldsz.  oldsz can be larger than the actual
-// process size.  Returns the new process size.
+// Shrink user memory from oldsz to newsz.
+// Unmap resident pages from both page tables.
 uint64
 uvmdealloc(pagetable_t pagetable, pagetable_t kpagetable, uint64 oldsz, uint64 newsz)
 {
   if(newsz >= oldsz)
     return oldsz;
 
-  if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
-    int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
-    vmunmap(kpagetable, PGROUNDUP(newsz), npages, 0);
-    vmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+  uint64 start = PGROUNDUP(newsz);
+  uint64 end = PGROUNDUP(oldsz);
+
+  // Dealloc [start, end)
+  if(start < end){
+    vmunmap_sparse(kpagetable, start, end, 0);
+    vmunmap_sparse(pagetable, start, end, 1);
   }
 
   return newsz;
@@ -358,50 +435,16 @@ void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
-    vmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
+    vmunmap_sparse(pagetable, 0, PGROUNDUP(sz), 1);
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+// Copy ordinary user memory from parent to child.
+// Unmapped pages remain lazy.
 int
 uvmcopy(pagetable_t old, pagetable_t new, pagetable_t knew, uint64 sz)
 {
-  pte_t *pte;
-  uint64 pa, i = 0, ki = 0;
-  uint flags;
-  char *mem;
-
-  while (i < sz){
-    if((pte = walk(old, i, 0)) == NULL)
-      panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == NULL)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
-      goto err;
-    }
-    i += PGSIZE;
-    if(mappages(knew, ki, PGSIZE, (uint64)mem, flags & ~PTE_U) != 0){
-      goto err;
-    }
-    ki += PGSIZE;
-  }
-  return 0;
-
- err:
-  vmunmap(knew, 0, ki / PGSIZE, 0);
-  vmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+  return uvmcopy_range(old, new, knew, 0, PGROUNDUP(sz));
 }
 
 // mark a PTE invalid for user access.

@@ -12,6 +12,7 @@
 #include "include/vm.h"
 #include "include/printf.h"
 #include "include/string.h"
+#include "include/mmap.h"
 
 // Load a program segment into pagetable at virtual address va.
 // va must be page-aligned
@@ -72,7 +73,7 @@ int exec(char *path, char **argv)
   elock(ep);
 
   // Check ELF header
-  if(eread(ep, 0, (uint64) &elf, 0, sizeof(elf)) != sizeof(elf))
+  if(eread(ep, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
   if(elf.magic != ELF_MAGIC)
     goto bad;
@@ -130,7 +131,7 @@ int exec(char *path, char **argv)
   }
   ustack[argc] = 0;
 
-  // push the array of argv[] pointers.
+  // Push the array of argv[] pointers.
   sp -= (argc+1) * sizeof(uint64);
   sp -= sp % 16;
   if(sp < stackbase)
@@ -152,6 +153,11 @@ int exec(char *path, char **argv)
   // Commit to the user image.
   oldpagetable = p->pagetable;
   oldkpagetable = p->kpagetable;
+
+  // Release old VMAs before switching page tables.
+  if (vma_unmap_all(p) < 0)
+    printf("exec: mmap write-back failed\n");
+
   p->pagetable = pagetable;
   p->kpagetable = kpagetable;
   p->sz = sz;

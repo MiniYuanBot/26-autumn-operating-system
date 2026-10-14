@@ -12,7 +12,8 @@
 #include "include/vm.h"
 
 // Initialize the VMA table.
-void vma_init(struct proc *p) {
+void
+vma_init(struct proc *p) {
     memset(p->vmas, 0, sizeof(p->vmas));
 }
 
@@ -120,6 +121,77 @@ vma_find_free_addr(struct proc *p, uint64 addr, uint64 size, uint64 *va) {
     return -1;
 }
 
+// Copy VMAs and resident pages from p to np.
+// Roll back all copied mappings on failure.
+int
+vma_copy(struct proc *p, struct proc *np)
+{
+  // First copy resident pages.
+  // Because page copy may fail.
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+
+    if (!v->used)
+      continue;
+
+    uint64 start = PGROUNDDOWN(v->addr);
+    uint64 end = start + PGROUNDUP(v->length);
+    
+    if (uvmcopy_range(p->pagetable, np->pagetable,
+                  np->kpagetable, start, end) < 0)
+      goto bad;
+  }
+
+  // Then copy metadata and acquire file references.
+  for (int i = 0; i < NVMA; i++) {
+    if (!p->vmas[i].used)
+        continue;
+
+    np->vmas[i] = p->vmas[i];
+
+    if (np->vmas[i].file)
+      np->vmas[i].file = filedup(np->vmas[i].file);
+  }
+
+  return 0;
+
+bad:
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+
+    if (!v->used)
+      continue;
+
+    uint64 start = PGROUNDDOWN(v->addr);
+    uint64 end = start + PGROUNDUP(v->length);
+
+    vmunmap_sparse(np->kpagetable, start, end, 0);
+    vmunmap_sparse(np->pagetable, start, end, 1);
+  }
+
+  return -1;
+}
+
+// Unmap all VMAs and release their file references.
+// Continue cleanup even if file write-back fails.
+int
+vma_unmap_all(struct proc *p)
+{
+  int result = 0;
+
+  for (int i = 0; i < NVMA; i++) {
+    struct vma *v = &p->vmas[i];
+
+    if (!v->used)
+      continue;
+    
+    if (mmap_unmap(p, v->addr, v->length) < 0)
+      result = -1;
+  }
+
+  return result;
+}
+
 // Handle a page fault within a lazily allocated mmap region.
 int
 mmap_fault(struct proc *p, uint64 fault_va, int cause) {
@@ -213,8 +285,7 @@ mmap_unmap(struct proc *p, uint64 addr, uint64 length) {
         addr != v->addr ||
         length == 0 ||
         length > MAXUVA ||
-        PGROUNDUP(length) != PGROUNDUP(v->length)
-    )
+        PGROUNDUP(length) != PGROUNDUP(v->length))
         return -1;
 
     int result = 0;

@@ -270,7 +270,7 @@ sys_mmap(void)
   uint64 size = PGROUNDUP(length);
   uint64 va;
 
-  if(addr == 0 && vma_find_free_addr(p, 0, size, &va) < 0)
+  if(vma_find_free_addr(p, 0, size, &va) < 0)
     return -1;
 
   // Prevent overlapping or unaligned mappings.

@@ -166,7 +166,7 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  // Initialize vma.
+  // Initialize VMAs.
   vma_init(p);
 
   return p;
@@ -350,12 +350,14 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, np->kpagetable, p->sz) < 0){
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
+  if(uvmcopy(p->pagetable, np->pagetable, np->kpagetable, p->sz) < 0)
+    goto bad;
+
   np->sz = p->sz;
+
+  // copy vmas.
+  if (vma_copy(p, np) < 0)
+    goto bad;
 
   np->parent = p;
 
@@ -376,23 +378,17 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
-  // copy vmas.
-  for(int i = 0; i < NVMA; i++) {
-    if(p->vmas[i].used) {
-      np->vmas[i] = p->vmas[i];
-      // increment reference counts on mapping file.
-      if(p->vmas[i].file) {
-        filedup(p->vmas[i].file);
-      }
-    }
-  }
-
   pid = np->pid;
   np->state = RUNNABLE;
 
   release(&np->lock);
 
   return pid;
+
+bad:
+  freeproc(np);
+  release(&np->lock);
+  return -1;
 }
 
 // Pass p's abandoned children to init.
@@ -432,7 +428,14 @@ exit(int status)
   if(p == initproc)
     panic("init exiting");
 
+  // Clean up VMAs before entering the zombie state.
+  // MAP_SHARED mappings may require file write-back,
+  // which can sleep and must not run under p->lock.
+  if (vma_unmap_all(p) < 0)
+    printf("exit: mmap write-back failed\n");
+
   // Close all open files.
+  // VMA file references have already been released.
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
       struct file *f = p->ofile[fd];
