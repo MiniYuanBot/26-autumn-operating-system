@@ -159,7 +159,7 @@ endif
 ALL_TESTS := \
 	getcwd write getpid times uname \
 	mmap open openat brk munmap \
-	wait clone fork execve gitppid exit yield waitpid gettimeofday sleep
+	wait clone fork execve getppid exit yield waitpid gettimeofday sleep
 
 # Default: run all tests.
 TESTS ?= all
