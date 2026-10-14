@@ -12,6 +12,7 @@
 #include "include/console.h"
 #include "include/timer.h"
 #include "include/disk.h"
+#include "include/mmap.h"
 
 extern char trampoline[], uservec[], userret[];
 
@@ -64,8 +65,10 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
+
+  uint64 scause = r_scause();
   
-  if(r_scause() == 8){
+  if(scause == 8){
     // system call
     if(p->killed)
       exit(-1);
@@ -76,11 +79,18 @@ usertrap(void)
     // so don't enable until done with those registers.
     intr_on();
     syscall();
-  } 
-  else if((which_dev = devintr()) != 0){
+  } else if(scause == 12 || scause == 13 || scause == 15){
+    // page fault
+    uint64 cause = r_scause();
+    uint64 fault_va = r_stval();
+
+    if(mmap_fault(p, fault_va, cause) < 0) {
+      printf("\nusertrap(): mmap fault failed, va=%p cause=%p\n", fault_va, cause);
+      p->killed = 1;
+    }
+  } else if((which_dev = devintr()) != 0){
     // ok
-  } 
-  else {
+  } else {
     printf("\nusertrap(): unexpected scause %p pid=%d %s\n", r_scause(), p->pid, p->name);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     // trapframedump(p->trapframe);

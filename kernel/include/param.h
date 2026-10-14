@@ -4,6 +4,7 @@
 #define NPROC        50  // maximum number of processes
 #define NCPU          2  // maximum number of CPUs
 #define NOFILE       16  // open files per process
+#define NVMA         16  // virtual memory areas per process
 #define NFILE       100  // open files per system
 #define NINODE       50  // maximum number of active i-nodes
 #define NDEV         10  // maximum major device number

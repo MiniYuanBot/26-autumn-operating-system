@@ -14,6 +14,7 @@
 #include "include/trap.h"
 #include "include/vm.h"
 #include "include/initcode.h"
+#include "include/mmap.h"
 
 
 struct cpu cpus[NCPU];
@@ -165,12 +166,8 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
-  // Initialize file-backed memory mapping metadata.
-  p->mmap_addr   = 0;
-  p->mmap_length = 0;
-  p->mmap_offset = 0;
-  p->mmap_flags  = 0;
-  p->mmap_file   = NULL;
+  // Initialize vma.
+  vma_init(p);
 
   return p;
 }
@@ -368,7 +365,7 @@ fork(void)
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
-  // Cause fork to return 0 in the child.
+  // cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
   // increment reference counts on open file descriptors.
@@ -379,8 +376,18 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
-  pid = np->pid;
+  // copy vmas.
+  for(int i = 0; i < NVMA; i++) {
+    if(p->vmas[i].used) {
+      np->vmas[i] = p->vmas[i];
+      // increment reference counts on mapping file.
+      if(p->vmas[i].file) {
+        filedup(p->vmas[i].file);
+      }
+    }
+  }
 
+  pid = np->pid;
   np->state = RUNNABLE;
 
   release(&np->lock);

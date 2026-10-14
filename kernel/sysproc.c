@@ -15,6 +15,7 @@
 #include "include/vm.h"
 #include "include/fat32.h"
 #include "include/mman.h"
+#include "include/mmap.h"
 
 
 extern int exec(char *path, char **argv);
@@ -234,10 +235,6 @@ sys_mmap(void)
   // Check mapping parameters.
   if(length == 0 || length > MAXUVA)
     return -1;
-  
-  // This version only supports one mapped file.
-  if(p->mmap_file != NULL)
-    return -1;
 
   if(offset % PGSIZE != 0)
     return -1;
@@ -262,99 +259,41 @@ sys_mmap(void)
   if(flags == MAP_SHARED && !f->writable)
     return -1;
 
-  // This version only supports mappings within file size.
+  // Only supports mappings within file size.
   if(
     offset > f->ep->file_size ||
-     length > f->ep->file_size - offset
+    length > f->ep->file_size - offset
   )
     return -1;
 
+  // Choose a virtual address.
   uint64 size = PGROUNDUP(length);
-  uint64 va = addr ? addr : MAXUVA - size; // default allocate from the top (MAXUVA)
-  int mapped = 0;
+  uint64 va;
+
+  if(addr == 0 && vma_find_free_addr(p, 0, size, &va) < 0)
+    return -1;
 
   // Prevent overlapping or unaligned mappings.
   if(
-    size == 0 ||
-    size > MAXUVA ||
     va % PGSIZE != 0 ||
     va < PGROUNDUP(p->sz) ||
     va > MAXUVA - size
   )
     return -1;
 
-  for(uint64 i = 0; i < size; i += PGSIZE) {
-    pte_t *upte = walk(p->pagetable, va + i, 0);
-    pte_t *kpte = walk(p->kpagetable, va + i, 0);
+  // Lazy allocation.
+  struct vma *v = vma_alloc(p);
+  if(v == NULL)
+    return -1;
 
-    if((upte && (*upte & PTE_V)) ||
-       (kpte && (*kpte & PTE_V)))
-      return -1;
-  }
+  v->addr = va;
+  v->length = length;
+  v->offset = offset;
+  v->prot = prot;
+  v->flags = flags;
+  v->file = filedup(f);
 
-  // Translate mmap protection flags into PTE permissions.
-  int perm = 0;
-  if(prot & PROT_READ)
-    perm |= PTE_R;
-  if(prot & PROT_WRITE)
-    perm |= PTE_R | PTE_W;
-  if(prot & PROT_EXEC)
-    perm |= PTE_X;
-
-  // Eagerly allocate.
-  for(uint64 i = 0; i < size; i += PGSIZE) {
-    char *mem = kalloc();
-    if(mem == 0)
-      goto bad;
-
-    memset(mem, 0, PGSIZE);
-    uint64 n = length - i;
-    if(n > PGSIZE)
-      n = PGSIZE;
-
-    elock(f->ep);
-    int r = eread(f->ep, 0, (uint64)mem, offset + i, n);
-    eunlock(f->ep);
-
-    if(r != n) {
-      kfree(mem);
-      goto bad;
-    }
-
-    // Map into user page table.
-    if(mappages(p->pagetable, va + i, PGSIZE, (uint64)mem, perm | PTE_U) < 0) {
-      kfree(mem);
-      goto bad;
-    }
-
-    // Map into kernel page table.
-    if(mappages(p->kpagetable, va + i, PGSIZE, (uint64)mem, PTE_R | PTE_W) < 0) {
-      vmunmap(p->pagetable, va + i, 1, 1);
-      goto bad;
-    }
-
-    mapped++;
-  }
-
-  p->mmap_addr = va;
-  p->mmap_length = length;
-  p->mmap_offset = offset;
-  p->mmap_flags = flags;
-  p->mmap_file = filedup(f);
-
-  // Synchronize page-table updates with address translation.
-  sfence_vma();
   return va;
-
-bad:
-  // Roll back.
-  if(mapped > 0) {
-    vmunmap(p->kpagetable, va, mapped, 0);
-    vmunmap(p->pagetable, va, mapped, 1);
-  }
-
-  sfence_vma();
-  return -1;
 }
 
 uint64
@@ -369,52 +308,5 @@ sys_munmap(void)
   )
     return -1;
 
-  // Only support unmapping the entire recorded region.
-  if(
-    p->mmap_file == 0 ||
-    addr != p->mmap_addr ||
-    length != p->mmap_length
-  )
-    return -1;
-
-  struct file *f = p->mmap_file;
-
-  // Write back MAP_SHARED pages.
-  if(p->mmap_flags == MAP_SHARED) {
-    for(uint64 i = 0; i < length; i += PGSIZE) {
-      uint64 n = length - i;
-      if(n > PGSIZE)
-        n = PGSIZE;
-
-      uint64 pa = walkaddr(p->pagetable, addr + i);
-      if(pa == 0)
-        return -1;
-
-      elock(f->ep);
-      int r = ewrite(f->ep, 0, pa, p->mmap_offset + i, n);
-      eunlock(f->ep);
-
-      if(r != n)
-        return -1;
-    }
-  }
-
-  // Remove mappings.
-  uint64 npages = PGROUNDUP(length) / PGSIZE;
-  vmunmap(p->kpagetable, addr, npages, 0);
-  vmunmap(p->pagetable, addr, npages, 1);
-
-  // Synchronize page-table updates with address translation.
-  sfence_vma();
-
-  // Release the reference acquired by filedup().
-  fileclose(f);
-
-  p->mmap_addr   = 0;
-  p->mmap_length = 0;
-  p->mmap_offset = 0;
-  p->mmap_flags  = 0;
-  p->mmap_file   = NULL;
-
-  return 0;
+  return mmap_unmap(p, addr, length);
 }

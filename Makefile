@@ -38,7 +38,8 @@ OBJS += \
   $K/disk.o \
   $K/fat32.o \
   $K/plic.o \
-  $K/console.o
+  $K/console.o \
+  $K/mmap.o
 
 ifeq ($(platform), k210)
 OBJS += \
@@ -157,7 +158,8 @@ endif
 # All tests in the current suite.
 ALL_TESTS := \
 	shutdown getcwd write getpid times uname \
-	mmap open openat brk munmap
+	mmap open openat brk munmap \
+# 	wait clone fork execve gitppid exit yield waitpid gettimeofday sleep
 
 # Default: run all tests.
 TESTS ?= all
