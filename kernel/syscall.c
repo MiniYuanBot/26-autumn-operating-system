@@ -17,10 +17,10 @@ int
 fetchaddr(uint64 addr, uint64 *ip)
 {
   struct proc *p = myproc();
-  if(addr >= p->sz || addr+sizeof(uint64) > p->sz)
+  if (addr >= p->sz || addr + sizeof(uint64) > p->sz)
     return -1;
   // if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
-  if(copyin2((char *)ip, addr, sizeof(*ip)) != 0)
+  if (copyin2((char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
   return 0;
 }
@@ -33,7 +33,7 @@ fetchstr(uint64 addr, char *buf, int max)
   // struct proc *p = myproc();
   // int err = copyinstr(p->pagetable, buf, addr, max);
   int err = copyinstr2(buf, addr, max);
-  if(err < 0)
+  if (err < 0)
     return err;
   return strlen(buf);
 }
@@ -85,7 +85,7 @@ int
 argstr(int n, char *buf, int max)
 {
   uint64 addr;
-  if(argaddr(n, &addr) < 0)
+  if (argaddr(n, &addr) < 0)
     return -1;
   return fetchstr(addr, buf, max);
 }
@@ -127,77 +127,77 @@ extern uint64 sys_munmap(void);
 extern uint64 sys_openat(void);
 
 static uint64 (*syscalls[])(void) = {
-  [SYS_fork]        sys_fork,
-  [SYS_exit]        sys_exit,
-  [SYS_wait]        sys_wait,
-  [SYS_pipe]        sys_pipe,
-  [SYS_read]        sys_read,
-  [SYS_kill]        sys_kill,
-  [SYS_exec]        sys_exec,
-  [SYS_fstat]       sys_fstat,
-  [SYS_chdir]       sys_chdir,
-  [SYS_dup]         sys_dup,
-  [SYS_getpid]      sys_getpid,
-  [SYS_sbrk]        sys_sbrk,
-  [SYS_sleep]       sys_sleep,
-  [SYS_uptime]      sys_uptime,
-  [SYS_open]        sys_open,
-  [SYS_write]       sys_write,
-  [SYS_mkdir]       sys_mkdir,
-  [SYS_close]       sys_close,
-  [SYS_test_proc]   sys_test_proc,
-  [SYS_dev]         sys_dev,
-  [SYS_readdir]     sys_readdir,
-  [SYS_getcwd]      sys_getcwd,
-  [SYS_remove]      sys_remove,
-  [SYS_trace]       sys_trace,
-  [SYS_sysinfo]     sys_sysinfo,
-  [SYS_rename]      sys_rename,
-  // add by miniyuan
-  [SYS_shutdown]    sys_shutdown,
-  [SYS_times]       sys_times,
-  [SYS_uname]       sys_uname,
-  [SYS_brk]         sys_brk,
-  [SYS_mmap]        sys_mmap,
-  [SYS_munmap]      sys_munmap,
-  [SYS_openat]      sys_openat,
+    [SYS_fork] sys_fork,
+    [SYS_exit] sys_exit,
+    [SYS_wait] sys_wait,
+    [SYS_pipe] sys_pipe,
+    [SYS_read] sys_read,
+    [SYS_kill] sys_kill,
+    [SYS_exec] sys_exec,
+    [SYS_fstat] sys_fstat,
+    [SYS_chdir] sys_chdir,
+    [SYS_dup] sys_dup,
+    [SYS_getpid] sys_getpid,
+    [SYS_sbrk] sys_sbrk,
+    [SYS_sleep] sys_sleep,
+    [SYS_uptime] sys_uptime,
+    [SYS_open] sys_open,
+    [SYS_write] sys_write,
+    [SYS_mkdir] sys_mkdir,
+    [SYS_close] sys_close,
+    [SYS_test_proc] sys_test_proc,
+    [SYS_dev] sys_dev,
+    [SYS_readdir] sys_readdir,
+    [SYS_getcwd] sys_getcwd,
+    [SYS_remove] sys_remove,
+    [SYS_trace] sys_trace,
+    [SYS_sysinfo] sys_sysinfo,
+    [SYS_rename] sys_rename,
+    // add by miniyuan
+    [SYS_shutdown] sys_shutdown,
+    [SYS_times] sys_times,
+    [SYS_uname] sys_uname,
+    [SYS_brk] sys_brk,
+    [SYS_mmap] sys_mmap,
+    [SYS_munmap] sys_munmap,
+    [SYS_openat] sys_openat,
 };
 
 static char *sysnames[] = {
-  [SYS_fork]        "fork",
-  [SYS_exit]        "exit",
-  [SYS_wait]        "wait",
-  [SYS_pipe]        "pipe",
-  [SYS_read]        "read",
-  [SYS_kill]        "kill",
-  [SYS_exec]        "exec",
-  [SYS_fstat]       "fstat",
-  [SYS_chdir]       "chdir",
-  [SYS_dup]         "dup",
-  [SYS_getpid]      "getpid",
-  [SYS_sbrk]        "sbrk",
-  [SYS_sleep]       "sleep",
-  [SYS_uptime]      "uptime",
-  [SYS_open]        "open",
-  [SYS_write]       "write",
-  [SYS_mkdir]       "mkdir",
-  [SYS_close]       "close",
-  [SYS_test_proc]   "test_proc",
-  [SYS_dev]         "dev",
-  [SYS_readdir]     "readdir",
-  [SYS_getcwd]      "getcwd",
-  [SYS_remove]      "remove",
-  [SYS_trace]       "trace",
-  [SYS_sysinfo]     "sysinfo",
-  [SYS_rename]      "rename",
-  // add by miniyuan
-  [SYS_shutdown]    "shutdown",
-  [SYS_times]       "times",
-  [SYS_uname]       "uname",
-  [SYS_brk]         "brk",
-  [SYS_mmap]        "mmap",
-  [SYS_munmap]      "munmap",
-  [SYS_openat]      "openat",
+    [SYS_fork] "fork",
+    [SYS_exit] "exit",
+    [SYS_wait] "wait",
+    [SYS_pipe] "pipe",
+    [SYS_read] "read",
+    [SYS_kill] "kill",
+    [SYS_exec] "exec",
+    [SYS_fstat] "fstat",
+    [SYS_chdir] "chdir",
+    [SYS_dup] "dup",
+    [SYS_getpid] "getpid",
+    [SYS_sbrk] "sbrk",
+    [SYS_sleep] "sleep",
+    [SYS_uptime] "uptime",
+    [SYS_open] "open",
+    [SYS_write] "write",
+    [SYS_mkdir] "mkdir",
+    [SYS_close] "close",
+    [SYS_test_proc] "test_proc",
+    [SYS_dev] "dev",
+    [SYS_readdir] "readdir",
+    [SYS_getcwd] "getcwd",
+    [SYS_remove] "remove",
+    [SYS_trace] "trace",
+    [SYS_sysinfo] "sysinfo",
+    [SYS_rename] "rename",
+    // add by miniyuan
+    [SYS_shutdown] "shutdown",
+    [SYS_times] "times",
+    [SYS_uname] "uname",
+    [SYS_brk] "brk",
+    [SYS_mmap] "mmap",
+    [SYS_munmap] "munmap",
+    [SYS_openat] "openat",
 };
 
 void
@@ -207,25 +207,26 @@ syscall(void)
   struct proc *p = myproc();
 
   num = p->trapframe->a7;
-  if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     p->trapframe->a0 = syscalls[num]();
     // trace
     if ((p->tmask & (1 << num)) != 0) {
       printf("pid %d: %s -> %d\n", p->pid, sysnames[num], p->trapframe->a0);
     }
   } else {
-    printf("pid %d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
+    printf("pid %d %s: unknown sys call %d\n", p->pid, p->name, num);
     p->trapframe->a0 = -1;
   }
 }
 
-uint64 
-sys_test_proc(void) {
-    int n;
-    argint(0, &n);
-    printf("hello world from proc %d, hart %d, arg %d\n", myproc()->pid, r_tp(), n);
-    return 0;
+uint64
+sys_test_proc(void)
+{
+  int n;
+  argint(0, &n);
+  printf("hello world from proc %d, hart %d, arg %d\n", myproc()->pid, r_tp(),
+         n);
+  return 0;
 }
 
 uint64

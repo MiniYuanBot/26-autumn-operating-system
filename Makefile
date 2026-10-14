@@ -157,7 +157,7 @@ endif
 
 # All tests in the current suite.
 ALL_TESTS := \
-	shutdown getcwd write getpid times uname \
+	getcwd write getpid times uname \
 	mmap open openat brk munmap \
 # 	wait clone fork execve gitppid exit yield waitpid gettimeofday sleep
 

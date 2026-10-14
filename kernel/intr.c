@@ -14,8 +14,8 @@ push_off(void)
   int old = intr_get();
 
   intr_off();
-  //printf("\e[32mpush_off()\e[0m: cpuid(): %d\n", cpuid());
-  if(mycpu()->noff == 0)
+  // printf("\e[32mpush_off()\e[0m: cpuid(): %d\n", cpuid());
+  if (mycpu()->noff == 0)
     mycpu()->intena = old;
   mycpu()->noff += 1;
 }
@@ -25,16 +25,16 @@ pop_off(void)
 {
   struct cpu *c = mycpu();
 
-  //printf("\e[31mpop_off()\e[0m: cpuid(): %d\n", cpuid());
-  if(intr_get())
+  // printf("\e[31mpop_off()\e[0m: cpuid(): %d\n", cpuid());
+  if (intr_get())
     panic("pop_off - interruptible");
-  if(c->noff < 1) {
-    //printf("c->noff = %d\n", c->noff);
+  if (c->noff < 1) {
+    // printf("c->noff = %d\n", c->noff);
     panic("pop_off");
   }
-  //printf("c->noff: %d\n", c->noff);
-  //printf("c: %x\n", c);
+  // printf("c->noff: %d\n", c->noff);
+  // printf("c: %x\n", c);
   c->noff -= 1;
-  if(c->noff == 0 && c->intena)
+  if (c->noff == 0 && c->intena)
     intr_on();
 }

@@ -21,11 +21,12 @@ static struct {
   int locking;
 } pr;
 
-void printstring(const char* s) {
-    while (*s)
-    {
-        consputc(*s++);
-    }
+void
+printstring(const char *s)
+{
+  while (*s) {
+    consputc(*s++);
+  }
 }
 
 static void
@@ -35,7 +36,7 @@ printint(int xx, int base, int sign)
   int i;
   uint x;
 
-  if(sign && (sign = xx < 0))
+  if (sign && (sign = xx < 0))
     x = -xx;
   else
     x = xx;
@@ -43,15 +44,14 @@ printint(int xx, int base, int sign)
   i = 0;
   do {
     buf[i++] = digits[x % base];
-  } while((x /= base) != 0);
+  } while ((x /= base) != 0);
 
-  if(sign)
+  if (sign)
     buf[i++] = '-';
 
-  while(--i >= 0)
+  while (--i >= 0)
     consputc(buf[i]);
 }
-
 
 static void
 printptr(uint64 x)
@@ -73,22 +73,22 @@ printf(char *fmt, ...)
   char *s;
 
   locking = pr.locking;
-  if(locking)
+  if (locking)
     acquire(&pr.lock);
-  
+
   if (fmt == 0)
     panic("null fmt");
 
   va_start(ap, fmt);
-  for(i = 0; (c = fmt[i] & 0xff) != 0; i++){
-    if(c != '%'){
+  for (i = 0; (c = fmt[i] & 0xff) != 0; i++) {
+    if (c != '%') {
       consputc(c);
       continue;
     }
     c = fmt[++i] & 0xff;
-    if(c == 0)
+    if (c == 0)
       break;
-    switch(c){
+    switch (c) {
     case 'd':
       printint(va_arg(ap, int), 10, 1);
       break;
@@ -99,9 +99,9 @@ printf(char *fmt, ...)
       printptr(va_arg(ap, uint64));
       break;
     case 's':
-      if((s = va_arg(ap, char*)) == 0)
+      if ((s = va_arg(ap, char *)) == 0)
         s = "(null)";
-      for(; *s; s++)
+      for (; *s; s++)
         consputc(*s);
       break;
     case '%':
@@ -114,7 +114,7 @@ printf(char *fmt, ...)
       break;
     }
   }
-  if(locking)
+  if (locking)
     release(&pr.lock);
 }
 
@@ -126,11 +126,12 @@ panic(char *s)
   printf("\n");
   backtrace();
   panicked = 1; // freeze uart output from other CPUs
-  for(;;)
+  for (;;)
     ;
 }
 
-void backtrace()
+void
+backtrace()
 {
   uint64 *fp = (uint64 *)r_fp();
   uint64 *bottom = (uint64 *)PGROUNDUP((uint64)fp);
@@ -146,31 +147,49 @@ void
 printfinit(void)
 {
   initlock(&pr.lock, "pr");
-  pr.locking = 1;   // changed, used to be 1
+  pr.locking = 1; // changed, used to be 1
 }
 
 #ifdef QEMU
-void print_logo() {
-    printf("  (`-.            (`-.                            .-')       ('-.    _   .-')\n");
-    printf(" ( OO ).        _(OO  )_                        .(  OO)    _(  OO)  ( '.( OO )_ \n");
-    printf("(_/.  \\_)-. ,--(_/   ,. \\  ,--.                (_)---\\_)  (,------.  ,--.   ,--.) ,--. ,--.  \n");
-    printf(" \\  `.'  /  \\   \\   /(__/ /  .'       .-')     '  .-.  '   |  .---'  |   `.'   |  |  | |  |   \n");
-    printf("  \\     /\\   \\   \\ /   / .  / -.    _(  OO)   ,|  | |  |   |  |      |         |  |  | | .-')\n");
-    printf("   \\   \\ |    \\   '   /, | .-.  '  (,------. (_|  | |  |  (|  '--.   |  |'.'|  |  |  |_|( OO )\n");
-    printf("  .'    \\_)    \\     /__)' \\  |  |  '------'   |  | |  |   |  .--'   |  |   |  |  |  | | `-' /\n");
-    printf(" /  .'.  \\      \\   /    \\  `'  /              '  '-'  '-. |  `---.  |  |   |  | ('  '-'(_.-'\n");
-    printf("'--'   '--'      `-'      `----'                `-----'--' `------'  `--'   `--'   `-----'\n");
+void
+print_logo()
+{
+  printf("  (`-.            (`-.                            .-')       ('-.    "
+         "_   .-')\n");
+  printf(" ( OO ).        _(OO  )_                        .(  OO)    _(  OO)  "
+         "( '.( OO )_ \n");
+  printf("(_/.  \\_)-. ,--(_/   ,. \\  ,--.                (_)---\\_)  "
+         "(,------.  ,--.   ,--.) ,--. ,--.  \n");
+  printf(" \\  `.'  /  \\   \\   /(__/ /  .'       .-')     '  .-.  '   |  "
+         ".---'  |   `.'   |  |  | |  |   \n");
+  printf("  \\     /\\   \\   \\ /   / .  / -.    _(  OO)   ,|  | |  |   |  |  "
+         "    |         |  |  | | .-')\n");
+  printf("   \\   \\ |    \\   '   /, | .-.  '  (,------. (_|  | |  |  (|  "
+         "'--.   |  |'.'|  |  |  |_|( OO )\n");
+  printf("  .'    \\_)    \\     /__)' \\  |  |  '------'   |  | |  |   |  "
+         ".--'   |  |   |  |  |  | | `-' /\n");
+  printf(" /  .'.  \\      \\   /    \\  `'  /              '  '-'  '-. |  "
+         "`---.  |  |   |  | ('  '-'(_.-'\n");
+  printf("'--'   '--'      `-'      `----'                `-----'--' `------'  "
+         "`--'   `--'   `-----'\n");
 }
 #else
-void print_logo() {
-    printf(" (`-')           (`-')                   <-.(`-')\n");
-    printf(" (OO )_.->      _(OO )                    __( OO)\n");
-    printf(" (_| \\_)--.,--.(_/,-.\\  ,--.    (`-')    '-'. ,--.  .----.   .--.   .----.\n");
-    printf(" \\  `.'  / \\   \\ / (_/ /  .'    ( OO).-> |  .'   / \\_,-.  | /_  |  /  ..  \\\n");
-    printf("  \\    .')  \\   /   / .  / -.  (,------. |      /)    .' .'  |  | |  /  \\  .\n");
-    printf("  .'    \\  _ \\     /_)'  .-. \\  `------' |  .   '   .'  /_   |  | '  \\  /  '\n");
-    printf(" /  .'.  \\ \\-'\\   /   \\  `-' /           |  |\\   \\ |      |  |  |  \\  `'  /\n");
-    printf("`--'   '--'    `-'     `----'            `--' '--' `------'  `--'   `---''\n");
+void
+print_logo()
+{
+  printf(" (`-')           (`-')                   <-.(`-')\n");
+  printf(" (OO )_.->      _(OO )                    __( OO)\n");
+  printf(" (_| \\_)--.,--.(_/,-.\\  ,--.    (`-')    '-'. ,--.  .----.   .--.  "
+         " .----.\n");
+  printf(" \\  `.'  / \\   \\ / (_/ /  .'    ( OO).-> |  .'   / \\_,-.  | /_  "
+         "|  /  ..  \\\n");
+  printf("  \\    .')  \\   /   / .  / -.  (,------. |      /)    .' .'  |  | "
+         "|  /  \\  .\n");
+  printf("  .'    \\  _ \\     /_)'  .-. \\  `------' |  .   '   .'  /_   |  | "
+         "'  \\  /  '\n");
+  printf(" /  .'.  \\ \\-'\\   /   \\  `-' /           |  |\\   \\ |      |  | "
+         " |  \\  `'  /\n");
+  printf("`--'   '--'    `-'     `----'            `--' '--' `------'  `--'   "
+         "`---''\n");
 }
 #endif
-  

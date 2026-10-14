@@ -1,0 +1,29 @@
+BasedOnStyle: LLVM
+
+# 禁止移动头文件
+SortIncludes: false
+
+# 缩进与行宽
+IndentWidth: 2
+TabWidth: 2
+UseTab: Never
+ColumnLimit: 80
+
+# 指针风格
+PointerAlignment: Right
+
+# 大括号风格
+BreakBeforeBraces: Custom
+AlwaysBreakAfterDefinitionReturnType: All
+BraceWrapping:
+  AfterFunction: true
+  AfterControlStatement: Never
+  AfterStruct: false
+  AfterEnum: false
+
+# 空格
+SpaceBeforeParens: ControlStatements
+
+# 保持短语句的可读性
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false

@@ -11,7 +11,6 @@
 
 #define NTESTS (sizeof(cmds) / sizeof(cmds[0]))
 
-
 int
 main(void)
 {
@@ -22,28 +21,30 @@ main(void)
   //   mknod("console", CONSOLE, 0);
   //   open("console", O_RDWR);
   // }
-  if (dev(O_RDWR, CONSOLE, 0) < 0){
+  if (dev(O_RDWR, CONSOLE, 0) < 0) {
     shutdown();
     // shutdown() should never return
-    for(;;);
+    for (;;)
+      ;
   }
 
-  dup(0);  // stdout
-  dup(0);  // stderr
+  dup(0); // stdout
+  dup(0); // stderr
 
   // running tests
-  for(;;){
-    for(int i = 0; i < NTESTS; i++){
+  for (;;) {
+    for (int i = 0; i < NTESTS; i++) {
       pid = fork();
 
-      if(pid < 0){
+      if (pid < 0) {
         printf("init: fork faild\n");
         // parent process must use shutdown
         shutdown();
-        for(;;);
+        for (;;)
+          ;
       }
 
-      if(pid == 0){
+      if (pid == 0) {
         char *argv[] = {cmds[i], 0};
         exec(cmds[i], argv);
         printf("init: exec %s failed\n", cmds[i]);
@@ -53,27 +54,29 @@ main(void)
 
       // parent waits until test finishes
       // to make sure tests are sequential
-      for(;;){
+      for (;;) {
         // this call to wait() returns if the shell exits,
         // or if a parentless process exits.
         wpid = wait(&status);
-        if(wpid == pid){
+        if (wpid == pid) {
           // the shell exited; restart it.
           break;
-        } else if(wpid < 0){
+        } else if (wpid < 0) {
           printf("init: wait returned an error\n");
           shutdown();
-          for(;;);
+          for (;;)
+            ;
         } else {
           // it was a parentless process; do nothing.
         }
 
-        if(status != 0)
+        if (status != 0)
           failed++;
       }
     }
 
     shutdown();
-    for(;;);
+    for (;;)
+      ;
   }
 }

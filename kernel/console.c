@@ -10,7 +10,6 @@
 //
 #include <stdarg.h>
 
-
 #include "include/types.h"
 #include "include/param.h"
 #include "include/spinlock.h"
@@ -22,10 +21,12 @@
 #include "include/sbi.h"
 
 #define BACKSPACE 0x100
-#define C(x)  ((x)-'@')  // Control-x
+#define C(x) ((x) - '@') // Control-x
 
-void consputc(int c) {
-  if(c == BACKSPACE){
+void
+consputc(int c)
+{
+  if (c == BACKSPACE) {
     // if the user typed backspace, overwrite with a space.
     sbi_console_putchar('\b');
     sbi_console_putchar(' ');
@@ -36,13 +37,13 @@ void consputc(int c) {
 }
 struct {
   struct spinlock lock;
-  
+
   // input
 #define INPUT_BUF 128
   char buf[INPUT_BUF];
-  uint r;  // Read index
-  uint w;  // Write index
-  uint e;  // Edit index
+  uint r; // Read index
+  uint w; // Write index
+  uint e; // Edit index
 } cons;
 
 //
@@ -54,9 +55,9 @@ consolewrite(int user_src, uint64 src, int n)
   int i;
 
   acquire(&cons.lock);
-  for(i = 0; i < n; i++){
+  for (i = 0; i < n; i++) {
     char c;
-    if(either_copyin(&c, user_src, src+i, 1) == -1)
+    if (either_copyin(&c, user_src, src + i, 1) == -1)
       break;
     sbi_console_putchar(c);
   }
@@ -80,11 +81,11 @@ consoleread(int user_dst, uint64 dst, int n)
 
   target = n;
   acquire(&cons.lock);
-  while(n > 0){
+  while (n > 0) {
     // wait until interrupt handler has put some
     // input into cons.buffer.
-    while(cons.r == cons.w){
-      if(myproc()->killed){
+    while (cons.r == cons.w) {
+      if (myproc()->killed) {
         release(&cons.lock);
         return -1;
       }
@@ -93,8 +94,8 @@ consoleread(int user_dst, uint64 dst, int n)
 
     c = cons.buf[cons.r++ % INPUT_BUF];
 
-    if(c == C('D')){  // end-of-file
-      if(n < target){
+    if (c == C('D')) { // end-of-file
+      if (n < target) {
         // Save ^D for next time, to make sure
         // caller gets a 0-byte result.
         cons.r--;
@@ -104,13 +105,13 @@ consoleread(int user_dst, uint64 dst, int n)
 
     // copy the input byte to the user-space buffer.
     cbuf = c;
-    if(either_copyout(user_dst, dst, &cbuf, 1) == -1)
+    if (either_copyout(user_dst, dst, &cbuf, 1) == -1)
       break;
 
     dst++;
     --n;
 
-    if(c == '\n'){
+    if (c == '\n') {
       // a whole line has arrived, return to
       // the user-level read().
       break;
@@ -132,38 +133,38 @@ consoleintr(int c)
 {
   acquire(&cons.lock);
 
-  switch(c){
-  case C('P'):  // Print process list.
+  switch (c) {
+  case C('P'): // Print process list.
     procdump();
     break;
-  case C('U'):  // Kill line.
-    while(cons.e != cons.w &&
-          cons.buf[(cons.e-1) % INPUT_BUF] != '\n'){
+  case C('U'): // Kill line.
+    while (cons.e != cons.w && cons.buf[(cons.e - 1) % INPUT_BUF] != '\n') {
       cons.e--;
       consputc(BACKSPACE);
     }
     break;
   case C('H'): // Backspace
   case '\x7f':
-    if(cons.e != cons.w){
+    if (cons.e != cons.w) {
       cons.e--;
       consputc(BACKSPACE);
     }
     break;
   default:
-    if(c != 0 && cons.e-cons.r < INPUT_BUF){
-      #ifndef QEMU
-      if (c == '\r') break;     // on k210, "enter" will input \n and \r
-      #else
+    if (c != 0 && cons.e - cons.r < INPUT_BUF) {
+#ifndef QEMU
+      if (c == '\r')
+        break; // on k210, "enter" will input \n and \r
+#else
       c = (c == '\r') ? '\n' : c;
-      #endif
+#endif
       // echo back to the user.
       consputc(c);
 
       // store for consumption by consoleread().
       cons.buf[cons.e++ % INPUT_BUF] = c;
 
-      if(c == '\n' || c == C('D') || cons.e == cons.r+INPUT_BUF){
+      if (c == '\n' || c == C('D') || cons.e == cons.r + INPUT_BUF) {
         // wake up consoleread() if a whole line (or end-of-file)
         // has arrived.
         cons.w = cons.e;
@@ -172,7 +173,7 @@ consoleintr(int c)
     }
     break;
   }
-  
+
   release(&cons.lock);
 }
 
@@ -182,7 +183,7 @@ consoleinit(void)
   initlock(&cons.lock, "cons");
 
   cons.e = cons.w = cons.r = 0;
-  
+
   // connect read and write system calls
   // to consoleread and consolewrite.
   devsw[CONSOLE].read = consoleread;
