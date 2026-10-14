@@ -245,49 +245,6 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
-// a user program that calls exec("/init")
-// od -t xC initcode
-// uchar initcode[] = {
-//   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
-//   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
-//   0x93, 0x08, 0x70, 0x00, 0x73, 0x00, 0x00, 0x00,
-//   0x93, 0x08, 0x20, 0x00, 0x73, 0x00, 0x00, 0x00,
-//   0xef, 0xf0, 0x9f, 0xff, 0x2f, 0x69, 0x6e, 0x69,
-//   0x74, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x00,
-//   0x00, 0x00, 0x00, 0x00
-// };
-
-// uchar printhello[] = {
-//     0x13, 0x00, 0x00, 0x00,     // nop
-//     0x13, 0x00, 0x00, 0x00,     // nop
-//     0x13, 0x00, 0x00, 0x00,     // nop
-//     // <start>
-//     0x17, 0x05, 0x00, 0x00,     // auipc a0, 0x0
-//     0x13, 0x05, 0x05, 0x00,     // mv a0, a0
-//     0x93, 0x08, 0x60, 0x01,     // li a7, 22
-//     0x73, 0x00, 0x00, 0x00,     // ecall
-//     0xef, 0xf0, 0x1f, 0xff,     // jal ra, <start>
-//     // <loop>
-//     0xef, 0x00, 0x00, 0x00,     // jal ra, <loop>
-// };
-
-// void test_proc_init(int proc_num) {
-//   if(proc_num > NPROC) panic("test_proc_init\n");
-//   struct proc *p;
-//   for(int i = 0; i < proc_num; i++) {
-//     p = allocproc();
-//     uvminit(p->pagetable, (uchar*)printhello, sizeof(printhello));
-//     p->sz = PGSIZE;
-//     p->trapframe->epc = 0x0;
-//     p->trapframe->sp = PGSIZE;
-//     safestrcpy(p->name, "test_code", sizeof(p->name));
-//     p->state = RUNNABLE;
-//     release(&p->lock);
-//   }
-//   initproc = proc;
-//   printf("[test_proc]test_proc init done\n");
-// }
-
 // Set up first user process.
 void
 userinit(void)
@@ -338,14 +295,16 @@ growproc(int n)
   return 0;
 }
 
-// Create a new process, copying the parent.
-// Sets up child kernel stack to return as if from fork() system call.
+// Fork the current process with an optional child stack.
 int
-fork(void)
+fork_with_stack(uint64 child_stack)
 {
   int i, pid;
   struct proc *np;
   struct proc *p = myproc();
+
+  if (child_stack >= MAXUVA)
+    return -1;
 
   // Allocate process.
   if ((np = allocproc()) == NULL) {
@@ -373,6 +332,11 @@ fork(void)
   // cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
+  // set the child's user stack pointer to child_stack.
+  if (child_stack != 0) {
+    np->trapframe->sp = child_stack;
+  }
+
   // increment reference counts on open file descriptors.
   for (i = 0; i < NOFILE; i++)
     if (p->ofile[i])
@@ -392,6 +356,14 @@ bad:
   freeproc(np);
   release(&np->lock);
   return -1;
+}
+
+// Create a new process, copying the parent.
+// Sets up child kernel stack to return as if from fork() system call.
+int
+fork(void)
+{
+  return fork_with_stack(0);
 }
 
 // Pass p's abandoned children to init.
@@ -494,7 +466,7 @@ exit(int status)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(uint64 addr)
+wait(uint64 status_addr)
 {
   struct proc *np;
   int havekids, pid;
@@ -508,7 +480,7 @@ wait(uint64 addr)
     // Scan through table looking for exited children.
     havekids = 0;
     for (np = proc; np < &proc[NPROC]; np++) {
-      // this code uses np->parent without holding np->lock.
+      // Uses np->parent without holding np->lock. Because
       // acquiring the lock first would cause a deadlock,
       // since np might be an ancestor, and we already hold p->lock.
       if (np->parent == p) {
@@ -519,8 +491,8 @@ wait(uint64 addr)
         if (np->state == ZOMBIE) {
           // Found one.
           pid = np->pid;
-          if (addr != 0 &&
-              copyout2(addr, (char *)&np->xstate, sizeof(np->xstate)) < 0) {
+          if (status_addr != 0 && copyout2(status_addr, (char *)&np->xstate,
+                                           sizeof(np->xstate)) < 0) {
             release(&np->lock);
             release(&p->lock);
             return -1;
@@ -542,6 +514,68 @@ wait(uint64 addr)
 
     // Wait for a child to exit.
     sleep(p, &p->lock); // DOC: wait-sleep
+  }
+}
+
+// Wait for and reap a child process.
+// Supports waiting for any child (-1) or a specific PID.
+// Uses Linux-compatible exit status encoding.
+int
+wait4(int wanted_pid, uint64 status_addr, int options)
+{
+  struct proc *p = myproc();
+  struct proc *np;
+  int havekids, pid;
+
+  // Validate wanted_pid and options.
+  if ((wanted_pid <= 0 && wanted_pid != -1) || options != 0)
+    return -1;
+
+  // Acquire the current process's lock.
+  acquire(&p->lock);
+
+  for (;;) {
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for (np = proc; np < &proc[NPROC]; np++) {
+      // Always acquire the parent lock before the child lock.
+      if (np->parent == p) {
+        acquire(&np->lock);
+        if (wanted_pid != -1 && np->pid != wanted_pid) {
+          release(&np->lock);
+          continue;
+        }
+
+        havekids = 1;
+        if (np->state == ZOMBIE) {
+          // Found one.
+          pid = np->pid;
+          int status = (np->xstate & 0xff) << 8;
+
+          if (status_addr != 0 &&
+              copyout2(status_addr, (char *)&status, sizeof(status)) < 0) {
+            release(&np->lock);
+            release(&p->lock);
+            return -1;
+          }
+          freeproc(np);
+          release(&np->lock);
+          release(&p->lock);
+          return pid;
+        }
+
+        release(&np->lock);
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if (!havekids || p->killed) {
+      release(&p->lock);
+      return -1;
+    }
+
+    // Wait for a child to exit.
+    sleep(p, &p->lock);
   }
 }
 

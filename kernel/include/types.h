@@ -21,6 +21,8 @@ typedef long           int64;
 
 #define XV6_INT_MAX ((int)(~0U >> 1))
 #define XV6_INT_MIN (-XV6_INT_MAX - 1)
+#define XV6_LONG_MAX ((int)(~0U >> 1))
+#define XV6_LONG_MIN (-XV6_LONG_MAX - 1)
 
 // #define NULL ((void *)0)
 #define NULL 0
